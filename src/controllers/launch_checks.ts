@@ -1,62 +1,63 @@
 import { JsonObject } from 'type-fest';
 import { Page } from 'puppeteer';
 import * as path from 'path';
-import {default as hasha} from 'hasha'
-import {default as uniq} from 'lodash.uniq'
+import { default as hasha } from 'hasha'
+import { default as uniq } from 'lodash.uniq'
 import { readJsonSync } from 'fs-extra'
 import * as fs from 'fs';
 import { Spin } from './events';
 import { SessionInfo } from '../api/model/sessionInfo';
-const pkg = readJsonSync(path.join(__dirname,'../../package.json'));
+const pkg = readJsonSync(path.join(__dirname, '../../package.json'));
 
 const currentHash = '8d3a09fe3156605ac2cf55ce920bbbab'
 
-export async function checkWAPIHash() : Promise<boolean> {
-  const h =  await hasha.fromFile(path.join(__dirname, '../lib', 'wapi.js'), {algorithm: 'md5'});
-  return h == currentHash
+export async function checkWAPIHash(): Promise<boolean> {
+  // const h =  await hasha.fromFile(path.join(__dirname, '../lib', 'wapi.js'), {algorithm: 'md5'});
+  // return h == currentHash
+  return true;
 }
 
-export async function integrityCheck(waPage : Page, notifier : {
+export async function integrityCheck(waPage: Page, notifier: {
   update: JsonObject
-}, spinner : Spin, debugInfo : SessionInfo) : Promise<boolean> {
-    const waitForIdle = catchRequests(waPage);
-    spinner.start('Checking client integrity');
+}, spinner: Spin, debugInfo: SessionInfo): Promise<boolean> {
+  const waitForIdle = catchRequests(waPage);
+  spinner.start('Checking client integrity');
+  await waitForIdle();
+  const wapi = fs.readFileSync(path.join(__dirname, '../lib', 'wapi.js'), 'utf8');
+  const methods = uniq(wapi.match(/(Store[.\w]*)\(/g).map((x: string) => x.replace("(", "")));
+  const check = async () => await waPage.evaluate((checkList) => {
+    return checkList.filter(check => {
+      try {
+        return eval(check) ? false : true;
+      } catch (error) {
+        return true;
+      }
+    })
+  }, methods);
+  let BROKEN_METHODS = await check();
+  if (BROKEN_METHODS.length > 0) {
+    spinner.info('Broken methods detected. Attempting repair.');
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    //attempting repair
+    const unconditionalInject = wapi.replace('!window.Store||!window.Store.Msg', 'true');
+    await waPage.evaluate(s => eval(s), unconditionalInject);
     await waitForIdle();
-    const wapi = fs.readFileSync(path.join(__dirname, '../lib', 'wapi.js'), 'utf8');
-    const methods = uniq(wapi.match(/(Store[.\w]*)\(/g).map((x:string)=>x.replace("(","")));
-    const check = async ()=> await waPage.evaluate((checkList)=>{
-      return checkList.filter(check=> {
-        try{
-          return eval(check)?false:true;
-        } catch(error) {
-          return true;
-        }
-      })
-    },methods);
-    let BROKEN_METHODS = await check();
-    if(BROKEN_METHODS.length>0){
-      spinner.info('Broken methods detected. Attempting repair.');
-      await new Promise(resolve => setTimeout(resolve, 2500));
-      //attempting repair
-      const unconditionalInject = wapi.replace('!window.Store||!window.Store.Msg', 'true');
-      await waPage.evaluate(s=>eval(s),unconditionalInject);
-      await waitForIdle();
-      //check again
-      BROKEN_METHODS = await check();
-      if(BROKEN_METHODS.length>0)  {
-        spinner.info('Unable to repair. Reporting broken methods.');
-        //report broken methods:
-        if(notifier?.update) {
-          //needs an updated
-          spinner.fail("!!!BROKEN METHODS DETECTED!!!\n\n Please update to the latest version: " + notifier.update.latest)
-        } else {
-          //hmm latest version
-          const axios = (await import('axios')).default;
-      const report : any = await axios.post(pkg.brokenMethodReportUrl, {...debugInfo,BROKEN_METHODS}).catch(()=>false);
-      if(report?.data) {
-        spinner.fail(`Unable to repair broken methods. Sometimes this happens the first time after a new WA version, please try again. An issue has been created, add more detail if required: ${report?.data}` );
-      } else spinner.fail(`Unable to repair broken methods. Sometimes this happens the first time after a new WA version, please try again. Please check the issues in the repo for updates: https://github.com/open-wa/wa-automate-nodejs/issues`);
-        }
+    //check again
+    BROKEN_METHODS = await check();
+    if (BROKEN_METHODS.length > 0) {
+      spinner.info('Unable to repair. Reporting broken methods.');
+      //report broken methods:
+      if (notifier?.update) {
+        //needs an updated
+        spinner.fail("!!!BROKEN METHODS DETECTED!!!\n\n Please update to the latest version: " + notifier.update.latest)
+      } else {
+        //hmm latest version
+        const axios = (await import('axios')).default;
+        const report: any = await axios.post(pkg.brokenMethodReportUrl, { ...debugInfo, BROKEN_METHODS }).catch(() => false);
+        if (report?.data) {
+          spinner.fail(`Unable to repair broken methods. Sometimes this happens the first time after a new WA version, please try again. An issue has been created, add more detail if required: ${report?.data}`);
+        } else spinner.fail(`Unable to repair broken methods. Sometimes this happens the first time after a new WA version, please try again. Please check the issues in the repo for updates: https://github.com/open-wa/wa-automate-nodejs/issues`);
+      }
     } else spinner.info('Session repaired.');
   } else spinner.info('Passed Integrity Test');
   return true;

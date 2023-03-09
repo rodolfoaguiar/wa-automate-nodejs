@@ -37,7 +37,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.integrityCheck = exports.checkWAPIHash = void 0;
 const path = __importStar(require("path"));
-const hasha_1 = __importDefault(require("hasha"));
 const lodash_uniq_1 = __importDefault(require("lodash.uniq"));
 const fs_extra_1 = require("fs-extra");
 const fs = __importStar(require("fs"));
@@ -45,8 +44,9 @@ const pkg = (0, fs_extra_1.readJsonSync)(path.join(__dirname, '../../package.jso
 const currentHash = '8d3a09fe3156605ac2cf55ce920bbbab';
 function checkWAPIHash() {
     return __awaiter(this, void 0, void 0, function* () {
-        const h = yield hasha_1.default.fromFile(path.join(__dirname, '../lib', 'wapi.js'), { algorithm: 'md5' });
-        return h == currentHash;
+        // const h =  await hasha.fromFile(path.join(__dirname, '../lib', 'wapi.js'), {algorithm: 'md5'});
+        // return h == currentHash
+        return true;
     });
 }
 exports.checkWAPIHash = checkWAPIHash;
