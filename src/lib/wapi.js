@@ -2188,3 +2188,5 @@ window.WAPI.addLicenseKey = async function (key) {
     const x = await r.text()
     return eval(x);
 }
+
+//"@open-wa/wa-automate": "git+https://github.com/rodolfoaguiar/wa-automate-nodejs#1.0.94-hub",
